@@ -212,7 +212,7 @@ void Page::restore() {
   auto end = this->region + this->header->size;
   size_t pos = 0;
   while (true) {
-    if (byte_it == end) {
+    if (byte_it >= end) {
       break;
     }
     ChunkHeader *info = reinterpret_cast<ChunkHeader *>(byte_it);
@@ -247,7 +247,18 @@ bool Page::add_to_target_chunk(const dariadb::Meas &m) {
 
   if (_openned_chunk.ch != nullptr && !_openned_chunk.ch->is_full()) {
     if (_openned_chunk.ch->header->last.id != m.id) {
-      _openned_chunk.ch->close();
+		flush_current_chunk();
+		_index->update_index_info(_openned_chunk.index, _openned_chunk.ch, m,
+			_openned_chunk.pos);
+		_openned_chunk.ch->close();
+		//pos from chunks_size to 0.
+		auto lst_pos = _openned_chunk.ch->bw->pos();
+		if (lst_pos>2) {
+			lst_pos-=2;
+			_openned_chunk.ch->header->size -= lst_pos;
+			header->pos -= lst_pos+1;
+		}
+      
     } else {
       if (_openned_chunk.ch->append(m)) {
         flush_current_chunk();
@@ -260,9 +271,12 @@ bool Page::add_to_target_chunk(const dariadb::Meas &m) {
   // search no full chunk.
   //auto step = this->header->chunk_size + sizeof(ChunkHeader);
   auto byte_it = this->chunks + this->header->pos;// step * this->header->addeded_chunks;
+  if (*byte_it != 0) {
+	  std::cout << 1;
+  }
   auto end = this->region + this->header->size;
   while (true) {
-    if (byte_it == end) {
+    if (byte_it >= end) {
       header->is_full = true;
       break;
     }
@@ -280,7 +294,7 @@ bool Page::add_to_target_chunk(const dariadb::Meas &m) {
       init_chunk_index_rec(ptr);
       return true;
     }
-    byte_it += sizeof(ChunkHeader) + info->size;
+    byte_it += sizeof(ChunkHeader) + header->chunk_size;
   }
   header->is_full = true;
   return false;
