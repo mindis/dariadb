@@ -126,7 +126,7 @@ int main(int argc, char *argv[]) {
     const size_t cap_B = 10;
     const size_t max_mem_chunks = 100;
 
-    // dont_clean = true;
+    //dont_clean = true;
     if (!dont_clean && dariadb::utils::fs::path_exists(storage_path)) {
       dariadb::utils::fs::rm(storage_path);
     }

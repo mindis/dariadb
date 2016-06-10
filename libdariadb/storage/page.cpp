@@ -121,13 +121,14 @@ Page *Page::create(std::string file_name, uint64_t sz, uint32_t chunk_per_storag
                                   index_file_size(chunk_per_storage), chunk_per_storage,
                                   chunk_size);
   res->region = region;
-
+  
   res->header = reinterpret_cast<PageHeader *>(region);
   res->chunks = reinterpret_cast<uint8_t *>(region + sizeof(PageHeader));
 
   res->header->chunk_per_storage = chunk_per_storage;
   res->header->chunk_size = chunk_size;
   res->header->is_closed = false;
+  res->header->size = sz;
 
   for (uint32_t i = 0; i < res->header->chunk_per_storage; ++i) {
     res->_free_poses.push_back(i);
@@ -206,15 +207,18 @@ IndexHeader Page::readIndexHeader(std::string ifile) {
 void Page::restore() {
   logger_info("Page: restore after crash " << this->filename);
 
-  auto step = this->header->chunk_size + sizeof(ChunkHeader);
+ 
   auto byte_it = this->chunks;
-  auto end = this->chunks + this->header->chunk_per_storage * step;
+  auto end = this->region + this->header->size;
   size_t pos = 0;
   while (true) {
     if (byte_it == end) {
       break;
     }
     ChunkHeader *info = reinterpret_cast<ChunkHeader *>(byte_it);
+	if (info->size == 0) {
+		break;
+	}
     auto ptr_to_begin = byte_it;
     auto ptr_to_buffer = ptr_to_begin + sizeof(ChunkHeader);
     if (info->is_init) {
@@ -228,7 +232,7 @@ void Page::restore() {
 	  }      
     }
     ++pos;
-    byte_it += step;
+	byte_it += sizeof(ChunkHeader) + info->size;
   }
 }
 
@@ -254,9 +258,9 @@ bool Page::add_to_target_chunk(const dariadb::Meas &m) {
     }
   }
   // search no full chunk.
-  auto step = this->header->chunk_size + sizeof(ChunkHeader);
-  auto byte_it = this->chunks + step * this->header->addeded_chunks;
-  auto end = this->chunks + this->header->chunk_per_storage * step;
+  //auto step = this->header->chunk_size + sizeof(ChunkHeader);
+  auto byte_it = this->chunks + this->header->pos;// step * this->header->addeded_chunks;
+  auto end = this->region + this->header->size;
   while (true) {
     if (byte_it == end) {
       header->is_full = true;
@@ -276,7 +280,7 @@ bool Page::add_to_target_chunk(const dariadb::Meas &m) {
       init_chunk_index_rec(ptr);
       return true;
     }
-    byte_it += step;
+    byte_it += sizeof(ChunkHeader) + info->size;
   }
   header->is_full = true;
   return false;
