@@ -136,7 +136,7 @@ PageIndex::~PageIndex() {
 }
 
 PageIndex_ptr PageIndex::create(const std::string &filename, uint64_t size,
-                                uint32_t chunk_per_storage, uint32_t chunk_size) {
+                                uint32_t chunk_per_storage) {
   PageIndex_ptr res = std::make_shared<PageIndex>();
   auto immap = utils::fs::MappedFile::touch(filename, size);
   auto iregion = immap->data();
@@ -150,7 +150,6 @@ PageIndex_ptr PageIndex::create(const std::string &filename, uint64_t size,
   res->iheader->maxTime = dariadb::MIN_TIME;
   res->iheader->minTime = dariadb::MAX_TIME;
   res->iheader->chunk_per_storage = chunk_per_storage;
-  res->iheader->chunk_size = chunk_size;
   res->iheader->is_sorted = false;
   res->iheader->id_bloom = storage::bloom_empty<dariadb::Id>();
   res->iheader->is_closed = false;

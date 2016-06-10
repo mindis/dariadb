@@ -15,7 +15,6 @@ struct IndexHeader {
   dariadb::Time maxTime;
 
   uint32_t chunk_per_storage; // max chunks count
-  uint32_t chunk_size;        // each chunks size in bytes
   bool is_sorted;             // items in index file sorted by time
   bool is_closed;
   dariadb::Id id_bloom; // bloom filter of Meas.id
@@ -55,7 +54,7 @@ public:
 
   ~PageIndex();
   static PageIndex_ptr create(const std::string &filename, uint64_t size,
-                              uint32_t chunk_per_storage, uint32_t chunk_size);
+                              uint32_t chunk_per_storage);
   static PageIndex_ptr open(const std::string &filename, bool read_only);
 
   void update_index_info(IndexReccord *cur_index, const Chunk_Ptr &ptr, const Meas &m,

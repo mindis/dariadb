@@ -118,8 +118,7 @@ Page *Page::create(std::string file_name, uint64_t sz, uint32_t chunk_per_storag
 
   res->page_mmap = mmap;
   res->_index = PageIndex::create(PageIndex::index_name_from_page_name(file_name),
-                                  index_file_size(chunk_per_storage), chunk_per_storage,
-                                  chunk_size);
+                                  index_file_size(chunk_per_storage), chunk_per_storage);
   res->region = region;
   
   res->header = reinterpret_cast<PageHeader *>(region);
@@ -250,15 +249,16 @@ bool Page::add_to_target_chunk(const dariadb::Meas &m) {
 		flush_current_chunk();
 		_index->update_index_info(_openned_chunk.index, _openned_chunk.ch, m,
 			_openned_chunk.pos);
-		_openned_chunk.ch->close();
+
 		//pos from chunks_size to 0.
 		auto lst_pos = _openned_chunk.ch->bw->pos();
 		if (lst_pos>2) {
 			lst_pos-=2;
 			_openned_chunk.ch->header->size -= lst_pos;
-			header->pos -= lst_pos+1;
+
+            header->pos -= lst_pos;
 		}
-      
+      _openned_chunk.ch->close();
     } else {
       if (_openned_chunk.ch->append(m)) {
         flush_current_chunk();
@@ -309,12 +309,32 @@ void Page::flush_current_chunk() {
 }
 
 void Page::init_chunk_index_rec(Chunk_Ptr ch) {
-  assert(header->chunk_size == ch->header->size);
+  //assert(header->chunk_size == ch->header->size);
 
+    if(_index->iheader->chunk_per_storage<=header->addeded_chunks){
+        auto ifname=PageIndex::index_name_from_page_name(this->filename);
+        auto oldcount=_index->iheader->chunk_per_storage;
+        auto newcount=oldcount*1.5;
+        _index=nullptr;
+        auto diff=newcount-oldcount;
+        IndexReccord empty;
+        memset(&empty,0,sizeof(IndexReccord));
+        std::ofstream of(ifname,std::ios_base::app);
+        if(!of.is_open()){
+            throw MAKE_EXCEPTION("on index resize: open error.");
+        }
+        for(size_t i=0;i<diff;++i){
+            of.write((char*)&empty,sizeof(IndexReccord));
+        }
+        of.flush();
+        of.close();
+        _index = PageIndex::open(ifname, false);
+        _index->iheader->chunk_per_storage=newcount;
+    }
   uint32_t pos_index = 0;
 
-  pos_index = _free_poses.front();
-  _free_poses.pop_front();
+  pos_index = header->addeded_chunks;
+  //_free_poses.pop_front();
 
   auto cur_index = &_index->index[pos_index];
   cur_index->chunk_id = ch->header->id;
