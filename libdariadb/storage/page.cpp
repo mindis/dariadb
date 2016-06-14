@@ -1,4 +1,5 @@
 #include "page.h"
+#include "../timeutil.h"
 #include "bloom_filter.h"
 #include <algorithm>
 #include <cassert>
@@ -6,90 +7,6 @@
 #include <fstream>
 
 using namespace dariadb::storage;
-
-// class PageCursor : public dariadb::storage::Cursor {
-// public:
-//  PageCursor(Page *page, const ChunkLinkList &chlinks) : link(page), _ch_links(chlinks)
-//  {
-//    reset_pos();
-//  }
-
-//  ~PageCursor() {
-//    if (link != nullptr) {
-//      link->dec_reader();
-//      link = nullptr;
-//    }
-//  }
-
-//  bool is_end() const override { return _is_end; }
-
-//  void readNext(Cursor::Callback *cbk) override {
-//    std::lock_guard<std::mutex> lg(_locker);
-//    if (_ch_links_iterator == _ch_links.cend()) {
-//      _is_end = true;
-//      return;
-//    }
-//    auto _index_it = this->link->_index->index[_ch_links_iterator->pos];
-//    ++_ch_links_iterator;
-//    for (; !_is_end;) {
-//      if (_is_end) {
-//        Chunk_Ptr empty;
-//        cbk->call(empty);
-//        _is_end = true;
-//        break;
-//      }
-
-//      Chunk_Ptr search_res;
-//      if (ChunkCache::instance()->find(_index_it.chunk_id, search_res))
-//      {
-//        cbk->call(search_res);
-//        break;
-//      } else
-//      {
-//        auto ptr_to_begin = link->chunks + _index_it.offset;
-//        auto ptr_to_chunk_info_raw = reinterpret_cast<ChunkHeader *>(ptr_to_begin);
-//        auto ptr_to_buffer_raw = ptr_to_begin + sizeof(ChunkHeader);
-
-//        auto info = new ChunkHeader;
-//        memcpy(info, ptr_to_chunk_info_raw, sizeof(ChunkHeader));
-//        auto buf = new uint8_t[info->size];
-//        memcpy(buf, ptr_to_buffer_raw, info->size);
-//        Chunk_Ptr ptr = nullptr;
-//        if (info->is_zipped) {
-//          ptr = Chunk_Ptr{new ZippedChunk(info, buf)};
-//          ptr->should_free = true;
-//        } else {
-//          // TODO implement not zipped page.
-//          assert(false);
-//        }
-//        Chunk_Ptr c{ptr};
-//        // TODO replace by some check;
-//        // assert(c->info->last.time != 0);
-////        if (c->header->is_readonly) {
-////          ChunkCache::instance()->append(c);
-////        }
-//        cbk->call(c);
-//        break;
-//      }
-//    }
-//    if (_ch_links_iterator == _ch_links.cend()) {
-//      _is_end = true;
-//      return;
-//    }
-//  }
-
-//  void reset_pos() override { // start read from begining;
-//    _is_end = false;
-//    _ch_links_iterator = _ch_links.begin();
-//  }
-
-// protected:
-//  Page *link;
-//  bool _is_end;
-//  std::mutex _locker;
-//  ChunkLinkList _ch_links;
-//  ChunkLinkList::const_iterator _ch_links_iterator;
-//};
 
 Page::~Page() {
   header->is_closed = true;
@@ -204,6 +121,7 @@ IndexHeader Page::readIndexHeader(std::string ifile) {
 }
 
 void Page::restore() {
+  using dariadb::timeutil::to_string;
   logger_info("Page: restore after crash " << this->filename);
 
  
@@ -224,11 +142,14 @@ void Page::restore() {
       Chunk_Ptr ptr = nullptr;
       ptr = Chunk_Ptr{new ZippedChunk(info, ptr_to_buffer)};
       if (!ptr->check_checksum()) {
-        logger_fatal("Page: remove broken chunk #" << ptr->header->id);
+        logger_fatal("Page: remove broken chunk #"
+                     << ptr->header->id << " id:" << ptr->header->first.id << " time: ["
+                     << to_string(ptr->header->minTime) << " : "
+                     << to_string(ptr->header->maxTime) << "]");
         ptr->header->is_init = false;
-		_index->iheader->is_sorted = false;
-		_index->index[pos].is_init = false;
-	  }      
+        _index->iheader->is_sorted = false;
+        _index->index[pos].is_init = false;
+      }
     }
     ++pos;
 	byte_it += sizeof(ChunkHeader) + info->size;
@@ -264,7 +185,6 @@ bool Page::add_to_target_chunk(const dariadb::Meas &m) {
 			header->pos -= lst_pos;
 			_openned_chunk.ch->header->size -= lst_pos;
 		}
-		
       _openned_chunk.ch->close();
     } else {
       if (_openned_chunk.ch->append(m)) {
@@ -345,14 +265,8 @@ void Page::init_chunk_index_rec(Chunk_Ptr ch) {
 
   auto cur_index = &_index->index[pos_index];
   cur_index->chunk_id = ch->header->id;
-  // cur_index->meas_id = ch->header->first.id;
-  // cur_index->meas_id = ch->info->first.id;
-  // cur_index->last = ch->info->last;
-
   cur_index->flag_bloom = ch->header->flag_bloom;
-  //  cur_index->is_readonly = ch->info->is_readonly;
   cur_index->is_init = true;
-
   cur_index->offset = header->pos;
 
   header->pos += header->chunk_size + sizeof(ChunkHeader);
@@ -373,13 +287,6 @@ void Page::init_chunk_index_rec(Chunk_Ptr ch) {
 
   _openned_chunk.index = cur_index;
   _openned_chunk.pos = pos_index;
-  // TODO restore this (flush)
-  //  this->page_mmap->flush(get_header_offset(), sizeof(PageHeader));
-  //  this->mmap->flush(get_index_offset() + sizeof(Page_ChunkIndex),
-  //                    sizeof(Page_ChunkIndex));
-  //  auto offset = get_chunks_offset(header->chunk_per_storage) +
-  //                size_t(this->chunks - index[pos_index].offset);
-  //  this->mmap->flush(offset, sizeof(header->chunk_size));
 }
 
 bool Page::is_full() const {
@@ -465,10 +372,7 @@ void Page::readLinks(const QueryInterval &query, const ChunkLinkList &links,
                                                    << "). maybe broken");
         continue;
       }
-      //      auto info = new ChunkHeader;
-      //      memcpy(info, ptr_to_chunk_info_raw, sizeof(ChunkHeader));
-      //      auto buf = new uint8_t[info->size];
-      //      memcpy(buf, ptr_to_buffer_raw, info->size);
+
       Chunk_Ptr ptr = nullptr;
       if (ptr_to_chunk_info_raw->is_zipped) {
         ptr = Chunk_Ptr{new ZippedChunk(ptr_to_chunk_info_raw, ptr_to_buffer_raw)};
@@ -481,13 +385,8 @@ void Page::readLinks(const QueryInterval &query, const ChunkLinkList &links,
       if (c->header->is_readonly && !c->check_checksum()) {
         logger("page: " << this->filename << ": "
                         << "wrong chunk checksum. chunkId=" << c->header->id);
-		continue;
+        continue;
       }
-      // TODO replace by some check;
-      // assert(c->info->last.time != 0);
-      //      if (c->header->is_readonly) {
-      //        ChunkCache::instance()->append(c);
-      //      }
       search_res = c;
     }
     auto rdr = search_res->get_reader();
