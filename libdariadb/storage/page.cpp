@@ -158,7 +158,7 @@ Page *Page::open(std::string file_name, bool read_only) {
     throw MAKE_EXCEPTION("(res->header->chunk_size == 0)");
   }
 
-  for (uint32_t i = 0; i < res->header->chunk_per_storage; ++i) {
+  for (uint32_t i = 0; i < res->_index->iheader->chunk_per_storage; ++i) {
     auto irec = &res->_index->index[i];
     if (!irec->is_init) {
       res->_free_poses.push_back(i);
