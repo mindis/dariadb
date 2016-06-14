@@ -254,10 +254,17 @@ bool Page::add_to_target_chunk(const dariadb::Meas &m) {
 		auto lst_pos = _openned_chunk.ch->bw->pos();
 		if (lst_pos>2) {
 			lst_pos-=2;
+			size_t pos = 0;
+			for (size_t i = lst_pos; i < _openned_chunk.ch->header->size; ++i) {
+				auto value= _openned_chunk.ch->_buffer_t[i];
+				_openned_chunk.ch->_buffer_t[i] = 0;
+				_openned_chunk.ch->_buffer_t[pos] = value;
+				++pos;
+			}
+			header->pos -= lst_pos;
 			_openned_chunk.ch->header->size -= lst_pos;
-
-            header->pos -= lst_pos;
 		}
+		
       _openned_chunk.ch->close();
     } else {
       if (_openned_chunk.ch->append(m)) {
