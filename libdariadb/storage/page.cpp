@@ -183,9 +183,11 @@ bool Page::add_to_target_chunk(const dariadb::Meas &m) {
 				++pos;
 			}
 			header->pos -= lst_pos;
-			_openned_chunk.ch->header->size -= lst_pos;
+			_openned_chunk.ch->header->size = lst_pos;
+			_openned_chunk.ch->header->bw_pos -= lst_pos;
 		}
       _openned_chunk.ch->close();
+	  
     } else {
       if (_openned_chunk.ch->append(m)) {
         flush_current_chunk();
