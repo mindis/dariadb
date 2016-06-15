@@ -14,10 +14,10 @@ namespace storage {
 struct PageHeader {
   uint64_t pos;               // next write pos (bytes)
   uint32_t count_readers;     // readers count. on close must be zero.
-  uint64_t addeded_chunks;    // total count of chunks in page
+  uint64_t addeded_chunks;    // real count of chunks in page (may be greater chunk_per_storage)
   uint64_t size;              // size of page in bytes
   uint32_t chunk_per_storage; // max chunks count
-  uint32_t chunk_size;        // each chunks size in bytes
+  uint32_t chunk_size;        // each chunks max. size in bytes
   bool is_full;               // is full :)
   bool is_closed;
   dariadb::Time minTime;
